@@ -1,147 +1,136 @@
-**YouTube Music Playlist Creator**
-_Description_
-An AI-powered automation tool that helps users create and manage YouTube playlists efficiently. 
-The tool allows users to bulk import songs from CSV files and automatically create/update YouTube playlists using both YouTube Data API and YouTube Music API.
+# YouTube Music Automation Agent 🎵
 
-**Features**
-_🔐 Multiple Authentication Methods:_
-- YouTube Data API (OAuth)
-- API Key (Search Only)
+A robust Streamlit-based tool to automate the creation and management of YouTube Music playlists using the YouTube Data API and YTMusic API.
 
-_📂 CSV File Support:_
-- Auto-detection of song columns
-- Support for Spotify playlist exports
-- Preview and validation of song data
+---
 
-_🎵 Playlist Management:_
-- Create new playlists
-- Add to existing playlists
-- Batch processing of songs
-- Privacy control (Private/Unlisted/Public)
+## 🚀 Features
 
-_📊 Real-time Statistics:_
-- Search counts
-- Success/failure rates
-- API quota usage tracking
-- Cost estimation
+- **Create new playlists** or **add songs to existing playlists** on YouTube Music.
+- **Smart duplicate detection** using fuzzy matching and normalization.
+- **Batch processing** (up to 1200 songs per batch).
+- **Quota management**: Prevents exceeding YouTube API daily limits.
+- **Detailed CSV reports**: Download full, success-only, or failure-only logs.
+- **Real-time progress and stats** in the sidebar.
+- **OAuth authentication** with Google for secure access.
+- **Comprehensive error handling** and logging.
+- **Session state** for smooth multi-step workflows.
 
-**Prerequisites**
+---
 
+## 🖥️ Requirements
 
-# Required Python packages
-streamlit>=1.24.0
-pandas>=1.5.3
-google-api-python-client>=2.108.0
-google-auth-oauthlib>=1.2.0
-python-dotenv>=1.0.0
-ytmusicapi>=1.0.0
+- Python 3.8+
+- [Google Cloud Project](https://console.cloud.google.com/) with YouTube Data API enabled
+- credentials.json (OAuth client secrets) in the project directory
 
-**Setup Instructions**
-1. Clone the repository:
-git clone https://github.com/yourusername/youtube-playlist-creator.git
-cd youtube-playlist-creator
+### Python Packages
 
-2. Install dependencies:
+- `streamlit`
+- `pandas`
+- `numpy`
+- `ytmusicapi`
+- `google-api-python-client`
+- `google-auth-oauthlib`
+- `python-dotenv`
+- `rapidfuzz`
+
+Install all dependencies:
+```sh
 pip install -r requirements.txt
+```
 
-3. Configure Authentication:
-- Create a Google Cloud Project
-- Enable YouTube Data API v3
-- Create OAuth 2.0 credentials
-- Download credentials.json
-**Set environment variables:**
-YOUTUBE_API_KEY=your_api_key
-YOUTUBE_CLIENT_ID=your_client_id
-YOUTUBE_CLIENT_SECRET=your_client_secret
-YOUTUBE_REDIRECT_URIS=http://localhost:8501/,http://localhost:8080/
+---
 
-4. Run the application:
-streamlit run youtube_manager.py
+## ⚡ Quick Start
 
-**Usage Guide**
-1. Authentication:
-- Choose authentication method (OAuth/API Key)
-- Follow the browser prompts to authenticate
-- Verify connection status
+1. **Clone this repo** and `cd` into the project folder.
+2. **Add your credentials.json** (from Google Cloud Console) to the project directory.
+3. **Run the app:**
+    ```sh
+    streamlit run youtube_manager.py
+    ```
+4. **Authenticate** with your Google account when prompted.
+5. **Upload your CSV** of songs (column name can be `song`, `title`, `track`, etc.).
+6. **Choose to create a new playlist or add to an existing one.**
+7. **Download the detailed CSV report** after processing.
 
-2. Upload Songs:
-- Prepare CSV file with song names
-- Upload using the file uploader
-- Verify song column detection
+---
 
-3. Create Playlist:
-- Enter playlist name
-- Select privacy setting
-- Configure processing options
-- Click "Create YouTube Music Playlist"
+## 📝 CSV Format
 
-4. Monitor Progress:
-- Watch real-time processing
-- Check success/failure rates
-- View detailed results
-- Access created playlist
+Your CSV should have a column with song names.  
+Supported column names: `song`, `title`, `track`, `name`, etc.
 
-**Features Details**
-_Authentication_
-- Secure OAuth 2.0 flow
-- Token persistence and refresh
-- Multiple authentication methods
-- Session management
+Example:
+```csv
+song
+Blinding Lights
+Shape of You
+永遠に光れ (Everlasting Shine)
+```
 
-_CSV Processing_
-- Automatic column detection
-- Data cleaning and validation
-- Batch processing support
-- Progress tracking
+---
 
-_Playlist Management_
-- Create new playlists
-- Add to existing playlists
-- Privacy controls
-- Quota management
+## 🛡️ Quota Management
 
-_Monitoring_
-- Real-time statistics
-- API quota tracking
-- Error logging
-- Performance metrics
-  
-**API Quotas and Limits**
-- Daily API quota: 10,000 units
-- Search cost: 100 units/request
-- Playlist insertion: 50 units/request
-- Max playlist size: 5,000 songs
+- **Daily quota is set to 210,000 tokens** (configurable in the code).
+- Each search: 100 tokens, each playlist insert: 50 tokens, playlist create: 50 tokens.
+- The app will halt processing if a batch would exceed your daily quota.
 
-**Error Handling**
-- Automatic retries
-- Rate limiting protection
-- Error logging
-- User-friendly error messages
- 
-**Security Features**
-- Secure token storage
-- Session management
-- Rate limiting
-- Quota monitoring
-  
-**Contributing**
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+---
 
-_**License**_
-This project is licensed under the MIT License - see the LICENSE file for details.
+## 📊 Sidebar Stats
 
-**Acknowledgments**
-- YouTube Data API
-- YouTube Music API
-- Streamlit Framework
-- Google Cloud Platform
+- Estimated tokens needed for your operation
+- Searches, songs added, errors, playlists created, duplicates skipped
+- Quota used and remaining (local estimate)
+- Progress bar for quota usage
 
-**Support**
-For issues and feature requests, please use the GitHub Issues section.
+---
 
-**Disclaimer**
-This tool is not affiliated with YouTube or Google. Use responsibly and in accordance with YouTube's terms of service.
+## 🐞 Troubleshooting
+
+- **Authentication errors:** Ensure credentials.json is present and valid. Clear tokens if needed.
+- **Quota errors:** Wait for quota reset (usually every 24h) or reduce batch size.
+- **API errors:** Check your internet connection and Google Cloud API status.
+
+---
+
+## 🧪 Testing
+
+- Manual testing is recommended for authentication, playlist creation, and error handling.
+- For automated testing, refactor the agent logic into a separate module and use `unittest` or `pytest` with mocks.
+
+---
+
+## ⚠️ Disclaimer
+
+- **Do not share your credentials.json or token files.**
+- This tool is for personal use. Respect YouTube’s terms of service and API quotas.
+
+---
+
+## 📄 License
+
+MIT License
+
+---
+
+## 🙏 Credits
+
+- [Google API Python Client](https://github.com/googleapis/google-api-python-client)
+- [YTMusicAPI](https://github.com/sigma67/ytmusicapi)
+- [Streamlit](https://streamlit.io/)
+
+---
+
+**Happy playlisting! 🎶**
+
+---
+
+Let me know if you want a .gitignore or a sample requirements.txt!
+
+Support For issues and feature requests, please use the GitHub Issues section.
+
+Disclaimer This tool is not affiliated with YouTube or Google. Use responsibly and in accordance with YouTube's terms of service.
