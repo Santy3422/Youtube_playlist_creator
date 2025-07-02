@@ -55,6 +55,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 import socket
 import psutil
 from dotenv import load_dotenv
+import uuid
 
 # --- Load Environment Variables ---
 load_dotenv()
@@ -108,7 +109,7 @@ YOUTUBE_API_QUOTAS: Dict[str, int] = {
     'search': 100,
     'playlist_insert': 50,
     'playlist_create': 50,
-    'daily_limit': 10000,
+    'daily_limit': 210000,  # <-- Increased from 10,000 to 200,000
     'playlist_item_limit': 5000
 }
 
@@ -198,7 +199,7 @@ class YouTubeMusicAutomationAgent:
         self.ytmusic: Optional[YTMusic] = None
         self.delay: float = 1.0
         self.api_key: Optional[str] = None
-        self.batch_size: int = 250
+        self.batch_size: int = 1200  # Increased batch size from 250 to 1200
         self.current_playlist_id: Optional[str] = None
 
         self.quota_settings: Dict[str, int] = {
@@ -323,6 +324,10 @@ class YouTubeMusicAutomationAgent:
 
             playlist_id = response['id']
             st.session_state.stats['created_playlists'] += 1
+            # After st.session_state.stats['created_playlists'] += 1
+            self.quota_settings['current_quota'] += self.quota_settings.get('playlist_create', 50)
+            st.session_state.stats['quota_used'] = self.quota_settings['current_quota']
+            st.session_state.stats['quota_remaining'] = max(0, self.quota_settings['daily_quota'] - self.quota_settings['current_quota'])
             logger.info(f"Created YouTube playlist '{clean_name}' with ID: {playlist_id}")
             return playlist_id
         except Exception as e:
@@ -356,6 +361,9 @@ class YouTubeMusicAutomationAgent:
                 return None
             
             st.session_state.stats['searches'] += 1
+            self.quota_settings['current_quota'] += self.quota_settings['search_cost']
+            st.session_state.stats['quota_used'] = self.quota_settings['current_quota']
+            st.session_state.stats['quota_remaining'] = max(0, self.quota_settings['daily_quota'] - self.quota_settings['current_quota'])
             return results
         except Exception as e:
             logger.error(f"YouTube API search failed for '{query}': {e}")
@@ -380,6 +388,10 @@ class YouTubeMusicAutomationAgent:
             
             st.session_state.stats['added'] += 1
             self.session_processed_videos.add(video_id)
+            # After st.session_state.stats['added'] += 1
+            self.quota_settings['current_quota'] += self.quota_settings['playlist_insert_cost']
+            st.session_state.stats['quota_used'] = self.quota_settings['current_quota']
+            st.session_state.stats['quota_remaining'] = max(0, self.quota_settings['daily_quota'] - self.quota_settings['current_quota'])
             return True
         except Exception as e:
             logger.error(f"Failed to add song {video_id} to playlist {playlist_id} via API: {e}")
@@ -476,6 +488,14 @@ class YouTubeMusicAutomationAgent:
         progress_bar = st.progress(0)
         status_text = st.empty()
 
+        # Before processing, estimate tokens needed
+        num_songs = len(songs)
+        tokens_needed = num_songs * (self.quota_settings['search_cost'] + self.quota_settings['playlist_insert_cost'])
+        if create_new:
+            tokens_needed += self.quota_settings.get('playlist_create', 50)
+        st.session_state.stats['quota_estimated_needed'] = tokens_needed
+        st.session_state.stats['quota_total'] = self.quota_settings['daily_quota']
+
         for i in range(0, total_songs_to_process, self.batch_size):
             batch = songs[i:i + self.batch_size]
             estimated_quota = len(batch) * (self.quota_settings['search_cost'] + self.quota_settings['playlist_insert_cost'])
@@ -497,11 +517,12 @@ class YouTubeMusicAutomationAgent:
                 else:
                     results['failed'].append(details['song'])
 
-                # --- FLUENT PROGRESS BAR ---
-                processed_count = i + idx + 1
-                progress_percent = min(1.0, processed_count / total_songs_to_process)
-                progress_bar.progress(progress_percent)
-                status_text.text(f"Processed {processed_count}/{total_songs_to_process} songs...")
+                # --- Update quota stats in real time ---
+                quota_used = self.quota_settings['current_quota'] + (idx + 1) * (self.quota_settings['search_cost'] + self.quota_settings['playlist_insert_cost'])
+                quota_total = self.quota_settings['daily_quota']
+                quota_remaining = max(0, quota_total - quota_used)
+                st.session_state.stats['quota_used'] = self.quota_settings['current_quota']
+                st.session_state.stats['quota_remaining'] = max(0, self.quota_settings['daily_quota'] - self.quota_settings['current_quota'])
 
             self.quota_settings['current_quota'] += estimated_quota
 
@@ -625,9 +646,14 @@ def authenticate_youtube_api(email: str) -> Optional[Resource]:
                 return None
 
         # Save the credentials for the next run
-        with open(TOKEN_FILE, 'w') as token:
-            token.write(creds.to_json())
-            logger.info("Credentials saved to token.json")
+        if creds:
+            with open(TOKEN_FILE, 'w') as token:
+                token.write(creds.to_json())
+                logger.info("Credentials saved to token.json")
+        else:
+            logger.error("No credentials to save after authentication flow.")
+            st.error("Authentication failed. Please try again.")
+            return None
 
     try:
         youtube_service = build('youtube', 'v3', credentials=creds)
@@ -683,8 +709,20 @@ async def handle_add_to_existing_playlist(agent: YouTubeMusicAutomationAgent, so
 
     try:
         with st.spinner("Fetching your YouTube playlists..."):
-            request = agent.youtube_service.playlists().list(part="snippet,contentDetails", mine=True, maxResults=50)
-            playlists_response = request.execute()
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    request = agent.youtube_service.playlists().list(part="snippet,contentDetails", mine=True, maxResults=50)
+                    playlists_response = request.execute()
+                    break  # Success!
+                except ConnectionResetError as e:
+                    logger.warning(f"Connection reset while fetching playlists (attempt {attempt+1}/{max_retries}): {e}")
+                    time.sleep(2 ** attempt)
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise  # Re-raise last error
+                    logger.warning(f"Error fetching playlists (attempt {attempt+1}/{max_retries}): {e}")
+                    time.sleep(2 ** attempt)
         
         user_playlists = playlists_response.get('items', [])
         if not user_playlists:
@@ -771,6 +809,25 @@ async def handle_add_to_existing_playlist(agent: YouTubeMusicAutomationAgent, so
 
                 if not filtered_songs:
                     st.warning("All songs in your CSV already exist in the selected playlist. Nothing to add.")
+                    # Still generate and show the report with all skipped songs
+                    results = {
+                        'playlist_id': playlist_id,
+                        'total_songs': len(songs),
+                        'successful': 0,
+                        'failed': [],
+                        'details': [],
+                        'duplicates_skipped': len(skipped_matches)
+                    }
+                    # Add skipped songs to the details for reporting
+                    for skipped in skipped_matches:
+                        results['details'].append({
+                            'song': skipped['input_song'],
+                            'status': 'Skipped (Already in Playlist by Name/Fuzzy)',
+                            'error': None,
+                            'video_id': None,
+                            'matched_playlist_title': skipped['matched_playlist_title']
+                        })
+                    update_and_display_results(results)
                     return
 
                 results = await agent.process_song_list(
@@ -796,7 +853,11 @@ async def handle_add_to_existing_playlist(agent: YouTubeMusicAutomationAgent, so
 
     except Exception as e:
         logger.error(f"Error handling existing playlists: {e}", exc_info=True)
-        st.error(f"An error occurred while fetching playlists: {e}")
+        st.error(
+            "An error occurred while fetching playlists. "
+            "This may be due to a network issue, quota exhaustion, or a temporary problem with the YouTube API. "
+            "Please check your internet connection and try again. If the problem persists, wait a few minutes and retry."
+        )
 
 # --- UI Rendering Functions ---
 
@@ -818,24 +879,41 @@ def render_sidebar() -> None:
             s['errors'] = s.get('errors', 0)
             s['created_playlists'] = s.get('created_playlists', 0)
             s['duplicates_skipped'] = s.get('duplicates_skipped', 0)
+            s['quota_used'] = s.get('quota_used', 0)
+            s['quota_total'] = s.get('quota_total', YOUTUBE_API_QUOTAS['daily_limit'])
+            s['quota_remaining'] = s.get('quota_remaining', YOUTUBE_API_QUOTAS['daily_limit'])
+            s['quota_estimated_needed'] = s.get('quota_estimated_needed', 0)
+            # Choose which estimate to show based on the current action
+            action = st.session_state.get('current_action', 'Create a New Playlist')
+            if action == "Add to an Existing Playlist":
+                estimated_needed = s.get('quota_estimated_needed_existing', 0)
+            else:
+                estimated_needed = s.get('quota_estimated_needed_new', 0)
+            st.metric("Estimated Needed", f"{estimated_needed:,}")
             col1, col2 = st.columns(2)
             col1.metric("Searches", s['searches'])
             col1.metric("Playlists Created", s['created_playlists'])
             col2.metric("Songs Added", s['added'])
             col2.metric("Errors", s['errors'])
-            # ADDED metric for skipped duplicates
             st.metric("Duplicates Skipped", s['duplicates_skipped'])
-        
+            st.metric("Quota Used", f"{s['quota_used']:,} / {s['quota_total']:,}")
+            st.metric("Quota Remaining", f"{s['quota_remaining']:,}")
+            st.progress(s['quota_used'] / s['quota_total'])
+
         with st.expander("⚙️ System Info", expanded=False):
             st.caption("**Dependencies:**")
             for lib, version in DEPENDENCIES.items():
                 st.write(f"- `{lib}`: `{version}`")
             st.caption("**API Limits:**")
             st.write(f"- Daily Quota: {YOUTUBE_API_QUOTAS['daily_limit']:,} units")
-            st.write(f"- Max Songs/Playlist: {YOUTUBE_API_QUOTAS['playlist_item_limit']:,}")
+            st.write(f"- Batch Size: 250 songs (uses up to 40,000 tokens per batch, per day)")
 
-        if st.button("🔄 Reset Stats"):
-            st.session_state.stats = {'searches': 0, 'added': 0, 'errors': 0, 'created_playlists': 0}
+        if st.button("🔄 Reset Stats", key="sidebar_reset_stats"):
+            st.session_state.stats = {
+                'searches': 0, 'added': 0, 'errors': 0, 'created_playlists': 0,
+                'duplicates_skipped': 0, 'quota_used': 0, 'quota_total': YOUTUBE_API_QUOTAS['daily_limit'],
+                'quota_remaining': YOUTUBE_API_QUOTAS['daily_limit'], 'quota_estimated_needed': 0
+            }
             st.rerun()
 
 def update_and_display_results(results: Dict) -> None:
@@ -893,6 +971,15 @@ def update_and_display_results(results: Dict) -> None:
     st.session_state.stats['added'] = results['successful']
     st.session_state.stats['duplicates_skipped'] += results.get('duplicates_skipped', 0)
 
+    # --- Display final quota usage and estimate ---
+    final_quota_used = st.session_state.stats.get('quota_used', 0)
+    quota_total = st.session_state.stats.get('quota_total', YOUTUBE_API_QUOTAS['daily_limit'])
+    quota_estimated = st.session_state.stats.get('quota_estimated_needed', 0)
+    st.info(
+        f"**Quota Used:** {final_quota_used:,} / {quota_total:,} tokens\n\n"
+        f"**Quota Estimated for this operation:** {quota_estimated:,} tokens"
+    )
+
     st.info("Dashboard stats have been updated. You may now create another playlist or exit.")
     # Do NOT rerun or sleep here.
 
@@ -905,14 +992,14 @@ def update_and_display_results(results: Dict) -> None:
 # --- Main Application Logic ---
 
 async def main() -> None:
-    """Main function to run the Streamlit application."""
     st.title("🎵 YouTube Music Automation Agent")
-    
+
     # Initialize agent and session state
     agent = YouTubeMusicAutomationAgent()
-    agent.batch_size = 250
+    agent.batch_size = 1200  # Ensure batch size is set to 1200 for the session
     initialize_session_state()
 
+    # --- Call render_sidebar() ONLY ONCE here ---
     render_sidebar()
 
     # --- Step 1: Authentication ---
@@ -923,7 +1010,11 @@ async def main() -> None:
         email = st.text_input("Enter your Google Account Email:", placeholder="your.email@gmail.com", key="auth_email_input")
         st.session_state.auth_email = email
 
-        auth_method = st.radio("Choose Authentication Method:", ["YouTube API (OAuth)", "YTMusic API (OAuth)"], horizontal=True)
+        auth_method = st.radio(
+            "Choose Authentication Method:",
+            ["YouTube API (OAuth)"],  # Only one option now
+            horizontal=True
+        )
 
         if auth_method == "YouTube API (OAuth)":
             if st.button("🔑 Authenticate with YouTube"):
@@ -939,18 +1030,6 @@ async def main() -> None:
                             st.success("Authentication successful!")
                             st.rerun()  # <-- updated here
         
-        elif auth_method == "YTMusic API (OAuth)":
-            if st.button("🎵 Authenticate with YTMusic"):
-                with st.spinner("Authenticating YTMusic..."):
-                    ytmusic_service = setup_ytmusic()
-                    if ytmusic_service:
-                        st.session_state.ytmusic = ytmusic_service
-                        # For now, let's assume YTMusic auth can also power YouTube API if same creds used
-                        st.session_state.auth_status = True
-                        st.session_state.current_account = "YTMusic API"
-                        st.success("YTMusic authentication successful!")
-                        st.rerun()
-
         # Re-authentication button
         if st.button("Clear Authentication Tokens"):
             if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
@@ -973,12 +1052,23 @@ async def main() -> None:
             song_col = detect_song_column(df)
             if song_col:
                 st.success(f"Detected song column: '{song_col}'")
-                # Clean data: drop nulls, convert to string, strip whitespace, remove empty/nan strings
                 songs = df[song_col].dropna().astype(str).str.strip().tolist()
                 songs = [s for s in songs if s.lower() not in ['nan', 'none', '']]
                 st.info(f"Found {len(songs)} valid songs to process.")
                 with st.expander("Preview Songs"):
                     st.dataframe(pd.DataFrame({'Song': songs[:20]}))
+
+                # --- Estimate tokens needed for Quick Stats sidebar ---
+                num_songs = len(songs)
+                playlist_create_cost = YOUTUBE_API_QUOTAS.get('playlist_create', 50)
+                per_song_cost = YOUTUBE_API_QUOTAS['search'] + YOUTUBE_API_QUOTAS['playlist_insert']
+                estimated_tokens_new = num_songs * per_song_cost + playlist_create_cost
+                estimated_tokens_existing = num_songs * per_song_cost
+                st.session_state.stats['quota_estimated_needed_new'] = estimated_tokens_new
+                st.session_state.stats['quota_estimated_needed_existing'] = estimated_tokens_existing
+
+                # --- Force sidebar to update ---
+                # render_sidebar()   # <-- REMOVE this line
             else:
                 st.error("Could not automatically detect a song column. Please ensure your CSV has a column named 'song', 'title', or 'track'.")
         except Exception as e:
@@ -988,6 +1078,7 @@ async def main() -> None:
     if songs:
         st.subheader("Step 3: Choose Your Action")
         action = st.radio("Choose Action", ["Create a New Playlist", "Add to an Existing Playlist"], horizontal=True, label_visibility="collapsed")
+        st.session_state['current_action'] = action
 
         if action == "Create a New Playlist":
             st.subheader("Step 4: Configure New Playlist")
@@ -1041,7 +1132,8 @@ def normalize_title_ultra_strict(title: str) -> str:
     title = remove_emojis(title)
     # Remove all content in any brackets ((), [], {}, <>), even nested
     title = re.sub(r'\(.*?\)|\[.*?\]|\{.*?\}|<.*?>', '', title)
-    # Remove common music suffixes/prefixes (artist, feat., from, version, remix, etc.)
+    # Remove common music suffixes/prefixes (artist, feat., from, version, remix, live, edit, acoustic, cover, karaoke, instrumental, official, audio, video, lyrics?)
+
     title = re.sub(r'(?i)\b(feat\.?|ft\.?|from|version|remix|live|edit|acoustic|cover|karaoke|instrumental|official|audio|video|lyrics?)\b', '', title)
     # Remove artist prefix (e.g., "TXT - ", "LiSA - ")
     title = re.sub(r'^[\w\s\.\-]+ - ', '', title)
@@ -1180,6 +1272,10 @@ def is_duplicate_superbullet(song_name: str, existing_titles: set, ratio_thresh=
         if ratio_val >= threshold:
             return True, exist_title
     return False, None
+
+def generate_unique_key(base_key: str) -> str:
+    """Generate a unique key by appending a timestamp"""
+    return f"{base_key}_{int(time.time() * 1000)}"
 
 if __name__ == "__main__":
     import asyncio
