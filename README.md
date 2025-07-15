@@ -1,35 +1,36 @@
 # YouTube Music Automation Agent 🎵
 
-A robust Streamlit-based tool to automate the creation and management of YouTube Music playlists using the YouTube Data API and YTMusic API.
+A robust, production-grade tool built with **Streamlit** to automate the creation and management of **YouTube Music playlists** using the **YouTube Data API v3** and **YTMusic API**.
 
 ---
 
 ## 🚀 Features
 
-- **Create new playlists** or **add songs to existing playlists** on YouTube Music.
-- **Smart duplicate detection** using fuzzy matching and normalization.
-- **Batch processing** (up to 1200 songs per batch).
-- **Quota management**: Prevents exceeding YouTube API daily limits.
-- **Detailed CSV reports**: Download full, success-only, or failure-only logs.
-- **Real-time progress and stats** in the sidebar.
-- **OAuth authentication** with Google for secure access.
-- **Comprehensive error handling** and logging.
-- **Session state** for smooth multi-step workflows.
+- Create **new playlists** or **add songs to existing** ones on YouTube Music.
+- Smart duplicate detection using **fuzzy matching**, **normalization**, and **video ID history**.
+- Supports **quick mode** (fast search) and **robust mode** (with ambiguity detection).
+- Real-time **quota tracking**, with daily limits and per-song cost calculations.
+- Per-song processing with isolated 10-second timeouts to improve reliability.
+- Handles up to **1200+ songs** in one batch using efficient session and API handling.
+- Google OAuth 2.0 authentication with token refresh and multi-account support.
+- **Detailed CSV report downloads**: full log, successes, failures, and duplicates.
+- Real-time **progress bar** and actionable stats in the sidebar.
+- Clean logging system with persistent file-based debug logs.
 
 ---
 
 ## 🖥️ Requirements
 
-- Python 3.8+
-- [Google Cloud Project](https://console.cloud.google.com/) with YouTube Data API enabled
-- credentials.json (OAuth client secrets) in the project directory
+- **Python** 3.8+
+- **Google Cloud Project** with YouTube Data API v3 enabled
+- `credentials.json` (OAuth client secret) in the project root
 
 ### Python Packages
 
 - `streamlit`
 - `pandas`
 - `numpy`
-- `ytmusicapi`
+- `youtube data api V3`
 - `google-api-python-client`
 - `google-auth-oauthlib`
 - `python-dotenv`
@@ -37,8 +38,45 @@ A robust Streamlit-based tool to automate the creation and management of YouTube
 
 Install all dependencies:
 ```sh
+```
+
+---
+
+# YouTube Music Automation Agent 🎵
+
+A robust, production-grade tool built with **Streamlit** to automate the creation and management of **YouTube Music playlists** using the **YouTube Data API v3** and **YTMusic API**.
+
+---
+
+## 🚀 Features
+
+- **Create new playlists or add songs to existing ones** on YouTube Music.
+- **Smart duplicate detection** using fuzzy matching, normalization, and video ID history.
+- **Quick mode** (fast search) and **robust mode** (with ambiguity detection).
+- **Real-time quota tracking** with daily limits and per-song cost calculations.
+- **Per-song processing** with isolated 10-second timeouts to improve reliability.
+- **Handles up to 1200+ songs** in one batch using efficient session and API handling.
+- **Google OAuth 2.0 authentication** with token refresh and multi-account support.
+- **Detailed CSV report downloads:** full log, successes, failures, and duplicates.
+- **Real-time progress bar** and actionable stats in the sidebar.
+- **Clean logging system** with persistent file-based debug logs.
+
+---
+
+## 🖥️ Requirements
+
+- **Python 3.8+**
+- **Google Cloud Project** with YouTube Data API v3 enabled
+- **credentials.json** (OAuth client secret) in the project root
+
+### Python Packages
+
+Install required packages:
+```bash
 pip install -r requirements.txt
 ```
+
+Main packages: `streamlit`, `google-api-python-client`, `google-auth-oauthlib`, `ytmusicapi`, `rapidfuzz`, `pandas`, `numpy`, `python-dotenv`
 
 ---
 
@@ -60,54 +98,61 @@ pip install -r requirements.txt
 ## 📝 CSV Format
 
 Your CSV should have a column with song names.  
-Supported column names: `song`, `title`, `track`, `name`, etc.
+**Supported column names:** `song`, `title`, `track`, `name`, `songs`  
+**Optional columns:** `artist`, `album` (improves match accuracy)
 
 Example:
 ```csv
-song
-Blinding Lights
-Shape of You
-永遠に光れ (Everlasting Shine)
+song,artist
+Blinding Lights,The Weeknd
+Shape of You,Ed Sheeran
+永遠に光れ (Everlasting Shine),Aimer
 ```
 
 ---
 
 ## 🛡️ Quota Management
 
-- **Daily quota is set to 210,000 tokens** (configurable in the code).
-- Each search: 100 tokens, each playlist insert: 50 tokens, playlist create: 50 tokens.
-- The app will halt processing if a batch would exceed your daily quota.
+- **Daily quota is set to 200,000 tokens** (configurable in quota_settings).
+- **Each search:** 100 tokens, **each playlist insert:** 50 tokens, **playlist create:** 50 tokens.
+- **The app will halt processing** if a batch would exceed your daily quota.
+- **Sidebar stats show** live quota usage and estimated songs remaining.
 
 ---
 
 ## 📊 Sidebar Stats
 
-- Estimated tokens needed for your operation
-- Searches, songs added, errors, playlists created, duplicates skipped
-- Quota used and remaining (local estimate)
-- Progress bar for quota usage
+- **Estimated tokens per song** (based on mode)
+- **Tokens used vs daily quota**
+- **Estimated songs remaining**
+- **Songs added, skipped, duplicates, and failures**
+- **Progress bar and real-time batch status**
 
 ---
 
 ## 🐞 Troubleshooting
 
-- **Authentication errors:** Ensure credentials.json is present and valid. Clear tokens if needed.
+- **Authentication errors:** Ensure credentials.json is present and valid. Delete token.json and re-authenticate if token fails.
 - **Quota errors:** Wait for quota reset (usually every 24h) or reduce batch size.
 - **API errors:** Check your internet connection and Google Cloud API status.
+- **Blank Streamlit screen:** Ensure the main block contains proper asyncio.run(main()) setup.
 
 ---
 
 ## 🧪 Testing
 
-- Manual testing is recommended for authentication, playlist creation, and error handling.
-- For automated testing, refactor the agent logic into a separate module and use `unittest` or `pytest` with mocks.
+- **Manual testing is recommended** for CSV upload, OAuth login, playlist creation, and error handling.
+- **For automated testing,** move agent logic to a separate file (e.g. agent.py) and use pytest with unittest.mock to simulate API calls.
 
 ---
 
 ## ⚠️ Disclaimer
 
+- **This tool is intended for educational and personal use only.**
 - **Do not share your credentials.json or token files.**
-- This tool is for personal use. Respect YouTube’s terms of service and API quotas.
+- **You are solely responsible** for adhering to YouTube's API Terms of Service and Google's policies.
+- **This tool is not affiliated** with Google or YouTube.
+- Use responsibly and in accordance with **YouTube's terms of service**.
 
 ---
 
@@ -121,7 +166,8 @@ MIT License
 
 - [Google API Python Client](https://github.com/googleapis/google-api-python-client)
 - [YTMusicAPI](https://github.com/sigma67/ytmusicapi)
-- [Streamlit](https://streamlit.io/)
+- [Streamlit](https://streamlit.io)
+- [RapidFuzz](https://github.com/maxbachmann/RapidFuzz)
 
 ---
 
@@ -129,8 +175,8 @@ MIT License
 
 ---
 
-Let me know if you want a .gitignore or a sample requirements.txt!
+For issues, feedback, or feature requests, please use the [GitHub Issues](https://github.com/your-username/youtube-music-agent/issues) section.
+```
 
 Support For issues and feature requests, please use the GitHub Issues section.
 
-Disclaimer This tool is not affiliated with YouTube or Google. Use responsibly and in accordance with YouTube's terms of service.
